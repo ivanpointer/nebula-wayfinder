@@ -1,11 +1,14 @@
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import type { PointerInfo } from "@babylonjs/core/Events/pointerEvents";
-import { Color4 } from "@babylonjs/core/Maths/math.color";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
-import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { Engine } from "@babylonjs/core/Engines/engine";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { MirrorTexture } from "@babylonjs/core/Materials/Textures/mirrorTexture";
+import { NoiseProceduralTexture } from "@babylonjs/core/Materials/Textures/Procedurals/noiseProceduralTexture";
 import { Scene } from "@babylonjs/core/scene";
 import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
 import { GlowLayer } from "@babylonjs/core/Layers/glowLayer";
@@ -13,6 +16,12 @@ import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPi
 import type { ActionService } from "../services/actionService";
 import type { GraphSceneData, Selection } from "../domain/types";
 import { GraphRenderer } from "./GraphRenderer";
+import {
+  CAMERA_FLOOR_TARGET_CLEARANCE,
+  REFLECTIVE_FLOOR_DEPTH,
+  REFLECTIVE_FLOOR_WIDTH,
+  REFLECTIVE_FLOOR_Y,
+} from "./sceneBounds";
 import "@babylonjs/core/Culling/ray";
 
 interface KnowledgeGraphAppOptions {
@@ -57,7 +66,7 @@ export class KnowledgeGraphApp {
       antialias: true,
     });
     this.scene = new Scene(this.engine);
-    this.scene.clearColor = new Color4(0.02, 0.025, 0.04, 1);
+    this.scene.clearColor = new Color4(0.002, 0.003, 0.006, 1);
     this.camera = this.createCamera(options.canvas);
     this.createLightingAndPostProcessing();
     this.renderer = new GraphRenderer(this.scene);
@@ -95,6 +104,10 @@ export class KnowledgeGraphApp {
     camera.attachControl(canvas, true);
     camera.lowerRadiusLimit = 5;
     camera.upperRadiusLimit = 34;
+    camera.lowerBetaLimit = 0.18;
+    camera.upperBetaLimit = Math.PI / 2.08;
+    camera.lowerTargetYLimit = REFLECTIVE_FLOOR_Y + CAMERA_FLOOR_TARGET_CLEARANCE;
+    camera.allowUpsideDown = false;
     camera.wheelDeltaPercentage = 0.018;
     camera.panningSensibility = 65;
     camera.minZ = 0.1;
@@ -105,30 +118,64 @@ export class KnowledgeGraphApp {
     this.camera.alpha = -Math.PI / 2.2;
     this.camera.beta = Math.PI / 2.55;
     this.camera.radius = Math.max(12, (bounds?.radius ?? 7) * 2.35);
-    this.camera.target = bounds?.center ?? Vector3.Zero();
+    this.camera.target = constrainCameraTarget(bounds?.center ?? Vector3.Zero());
   }
 
   private createLightingAndPostProcessing(): void {
-    const hemi = new HemisphericLight("soft-sky", new Vector3(0.2, 1, 0.4), this.scene);
-    hemi.intensity = 0.65;
-
-    const key = new DirectionalLight("key-light", new Vector3(-0.35, -0.8, -0.45), this.scene);
-    key.position = new Vector3(8, 12, 8);
-    key.intensity = 1.4;
+    this.createReflectiveFloor();
 
     const glow = new GlowLayer("node-glow", this.scene);
-    glow.intensity = 0.74;
-    glow.blurKernelSize = 48;
+    glow.intensity = 0.98;
+    glow.blurKernelSize = 64;
 
     const pipeline = new DefaultRenderingPipeline("render-pipeline", true, this.scene, [this.camera]);
     pipeline.bloomEnabled = true;
-    pipeline.bloomThreshold = 0.22;
-    pipeline.bloomWeight = 0.38;
+    pipeline.bloomThreshold = 0.14;
+    pipeline.bloomWeight = 0.52;
     pipeline.fxaaEnabled = true;
-    pipeline.imageProcessing.contrast = 1.14;
-    pipeline.imageProcessing.exposure = 1.02;
+    pipeline.imageProcessing.contrast = 1.2;
+    pipeline.imageProcessing.exposure = 1.04;
     pipeline.grainEnabled = true;
-    pipeline.grain.intensity = 4;
+    pipeline.grain.intensity = 2.8;
+  }
+
+  private createReflectiveFloor(): void {
+    const floorY = REFLECTIVE_FLOOR_Y;
+    const floor = MeshBuilder.CreateGround(
+      "reflection-floor",
+      { width: REFLECTIVE_FLOOR_WIDTH, height: REFLECTIVE_FLOOR_DEPTH, subdivisions: 2 },
+      this.scene,
+    );
+    const material = new StandardMaterial("reflection-floor-material", this.scene);
+    const mirror = new MirrorTexture("reflection-floor-mirror", { ratio: 0.82 }, this.scene, true);
+    const surfaceNoise = new NoiseProceduralTexture("reflection-floor-surface-noise", 256, this.scene);
+
+    floor.position.y = floorY;
+    floor.isPickable = false;
+    mirror.mirrorPlane = new Plane(0, -1, 0, floorY);
+    mirror.renderListPredicate = (mesh: AbstractMesh) =>
+      mesh.name !== floor.name && mesh.isVisible && mesh.isEnabled(false);
+    mirror.renderParticles = true;
+    mirror.adaptiveBlurKernel = 20;
+    mirror.level = 0.5;
+    surfaceNoise.brightness = 0.08;
+    surfaceNoise.octaves = 5;
+    surfaceNoise.persistence = 0.68;
+    surfaceNoise.animationSpeedFactor = 0;
+    surfaceNoise.uScale = 11;
+    surfaceNoise.vScale = 7;
+    surfaceNoise.level = 0.04;
+    material.diffuseColor = Color3.Black();
+    material.specularColor = Color3.FromHexString("#38465d");
+    material.emissiveColor = Color3.FromHexString("#010309");
+    material.bumpTexture = surfaceNoise;
+    material.emissiveTexture = surfaceNoise;
+    material.specularTexture = surfaceNoise;
+    material.reflectionTexture = mirror;
+    material.roughness = 0.38;
+    material.specularPower = 22;
+    material.alpha = 1;
+    floor.material = material;
   }
 
   private bindPointerControls(): void {
@@ -325,4 +372,10 @@ export class KnowledgeGraphApp {
   private resize = (): void => {
     this.engine.resize();
   };
+}
+
+function constrainCameraTarget(target: Vector3): Vector3 {
+  const constrained = target.clone();
+  constrained.y = Math.max(constrained.y, REFLECTIVE_FLOOR_Y + CAMERA_FLOOR_TARGET_CLEARANCE);
+  return constrained;
 }

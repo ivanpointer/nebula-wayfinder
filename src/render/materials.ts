@@ -27,13 +27,41 @@ export function createNodeMaterial(scene: Scene, node: GraphNode): PBRMaterial {
   material.useAlphaFromAlbedoTexture = false;
   material.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
   material.needDepthPrePass = true;
+  material.maxSimultaneousLights = 12;
   return material;
 }
 
 export function createEdgeMaterial(scene: Scene, id: string, color: Color3, selected = false): StandardMaterial {
   const material = new StandardMaterial(`edge-material-${id}`, scene);
-  material.diffuseColor = color.scale(selected ? 1.1 : 0.7);
-  material.emissiveColor = color.scale(selected ? 1.35 : 0.6);
-  material.alpha = selected ? 0.92 : 0.56;
+  const hotCore = new Color3(
+    Math.min(1, color.r * 0.55 + 0.32),
+    Math.min(1, color.g * 0.55 + 0.32),
+    Math.min(1, color.b * 0.55 + 0.32),
+  );
+
+  material.diffuseColor = hotCore.scale(selected ? 0.95 : 0.72);
+  material.emissiveColor = color.scale(selected ? 1.35 : 0.82).add(hotCore.scale(selected ? 0.4 : 0.22));
+  material.alpha = selected ? 0.9 : 0.72;
+  material.disableLighting = true;
+  material.maxSimultaneousLights = 12;
+  return material;
+}
+
+export function createEdgeGlowMaterial(scene: Scene, id: string, color: Color3, selected = false): StandardMaterial {
+  const material = new StandardMaterial(`edge-glow-material-${id}`, scene);
+  material.diffuseColor = color.scale(0.08);
+  material.emissiveColor = color.scale(selected ? 1.45 : 0.92);
+  material.alpha = selected ? 0.16 : 0.1;
+  material.disableLighting = true;
+  material.backFaceCulling = false;
+  return material;
+}
+
+export function createEdgeArrowMaterial(scene: Scene, id: string, color: Color3): StandardMaterial {
+  const material = new StandardMaterial(`edge-arrow-material-${id}`, scene);
+  material.diffuseColor = color.scale(0.28);
+  material.emissiveColor = color.scale(0.42);
+  material.alpha = 0.34;
+  material.disableLighting = true;
   return material;
 }

@@ -1,0 +1,5 @@
+export const REFLECTIVE_FLOOR_Y = -2.15;
+export const REFLECTIVE_FLOOR_WIDTH = 128;
+export const REFLECTIVE_FLOOR_DEPTH = 80;
+export const NODE_FLOOR_CLEARANCE = 0.08;
+export const CAMERA_FLOOR_TARGET_CLEARANCE = 0.65;

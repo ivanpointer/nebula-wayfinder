@@ -31,6 +31,11 @@ export function createOverlay(options: OverlayOptions) {
       return;
     }
 
+    if (selection.type === "nodes") {
+      renderNodeGroup(selection.nodes);
+      return;
+    }
+
     renderNode(selection.node);
   };
 
@@ -42,7 +47,20 @@ export function createOverlay(options: OverlayOptions) {
       <div class="toolbar-stat"><span>Clouds</span><strong>${options.graphScene.graphs.length}</strong></div>
       <div class="toolbar-stat"><span>Nodes</span><strong>${nodeCount}</strong></div>
       <div class="toolbar-stat"><span>Edges</span><strong>${edgeCount}</strong></div>
+      <button type="button" class="toolbar-button" data-command="auto-arrange">Auto arrange</button>
+      <button type="button" class="toolbar-button" data-command="reset-view">Reset view</button>
+      <button type="button" class="toolbar-button" data-command="reset-layout">Reset layout</button>
     `;
+
+    options.toolbar.querySelector('[data-command="auto-arrange"]')?.addEventListener("click", () => {
+      window.dispatchEvent(new CustomEvent("nebula:auto-arrange"));
+    });
+    options.toolbar.querySelector('[data-command="reset-view"]')?.addEventListener("click", () => {
+      window.dispatchEvent(new CustomEvent("nebula:reset-view"));
+    });
+    options.toolbar.querySelector('[data-command="reset-layout"]')?.addEventListener("click", () => {
+      window.dispatchEvent(new CustomEvent("nebula:reset-layout"));
+    });
 
     options.legend.innerHTML = [
       ["#4fd1c5", "Tasks"],
@@ -101,6 +119,19 @@ export function createOverlay(options: OverlayOptions) {
         ["Kind", edge.edge.kind],
         ["Direction", edge.edge.directed ? "Directed" : "Undirected"],
         ["Metadata", JSON.stringify(edge.edge.metadata ?? {}, null, 2)],
+      ])}
+    `;
+  };
+
+  const renderNodeGroup = (nodes: GraphNode[]): void => {
+    const domains = new Set(nodes.map((node) => node.domain));
+    options.inspector.innerHTML = `
+      <div class="eyebrow">Node group</div>
+      <h1 class="title">${nodes.length} selected</h1>
+      <p class="summary">${nodes.map((node) => node.label).join(", ")}</p>
+      ${fields([
+        ["Domains", Array.from(domains).join(", ")],
+        ["Statuses", Array.from(new Set(nodes.map((node) => node.status))).join(", ")],
       ])}
     `;
   };

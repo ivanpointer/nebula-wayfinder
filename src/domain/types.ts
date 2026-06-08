@@ -17,12 +17,20 @@ export interface SourceReference {
   url?: string;
 }
 
+export interface BackendReference {
+  store: "neo4j";
+  elementId: string;
+  labels?: string[];
+  relationshipType?: string;
+}
+
 export interface BaseNode {
   id: string;
   domain: NodeDomain;
   label: string;
   status: GraphNodeStatus;
   source: SourceReference;
+  backend?: BackendReference;
   metadata?: Record<string, unknown>;
   fixedPosition?: VectorTuple;
 }
@@ -101,6 +109,7 @@ export interface GraphEdge {
   kind: EdgeKind;
   label?: string;
   directed?: boolean;
+  backend?: BackendReference;
   metadata?: Record<string, unknown>;
   visual?: {
     weight?: number;
@@ -134,6 +143,7 @@ export interface VectorTuple {
 export type Selection =
   | { type: "node"; graphId: string; node: GraphNode }
   | { type: "edge"; graphId: string; edge: GraphEdge }
+  | { type: "nodes"; nodes: GraphNode[] }
   | null;
 
 export type ActionId =

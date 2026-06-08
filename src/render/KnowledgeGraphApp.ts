@@ -1,6 +1,8 @@
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import type { PointerInfo } from "@babylonjs/core/Events/pointerEvents";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { Engine } from "@babylonjs/core/Engines/engine";
@@ -11,12 +13,24 @@ import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPi
 import type { ActionService } from "../services/actionService";
 import type { GraphSceneData, Selection } from "../domain/types";
 import { GraphRenderer } from "./GraphRenderer";
+import "@babylonjs/core/Culling/ray";
 
 interface KnowledgeGraphAppOptions {
   canvas: HTMLCanvasElement;
   graphScene: GraphSceneData;
   actionService: ActionService;
   onSelectionChange: (selection: Selection) => void;
+}
+
+interface NodeDragState {
+  nodeIds: string[];
+  plane: Plane;
+  lastPoint: Vector3;
+}
+
+interface BoxSelectState {
+  startX: number;
+  startY: number;
 }
 
 export class KnowledgeGraphApp {
@@ -30,6 +44,12 @@ export class KnowledgeGraphApp {
 
   private selection: Selection = null;
 
+  private nodeDrag: NodeDragState | null = null;
+
+  private boxSelect: BoxSelectState | null = null;
+
+  private selectionBox: HTMLDivElement;
+
   constructor(private options: KnowledgeGraphAppOptions) {
     this.engine = new Engine(options.canvas, true, {
       preserveDrawingBuffer: true,
@@ -42,7 +62,9 @@ export class KnowledgeGraphApp {
     this.createLightingAndPostProcessing();
     this.renderer = new GraphRenderer(this.scene);
     this.renderer.render(options.graphScene);
-    this.bindPicking();
+    this.selectionBox = this.createSelectionBox();
+    this.bindPointerControls();
+    this.bindGlobalControls();
     window.addEventListener("resize", this.resize);
   }
 
@@ -60,6 +82,9 @@ export class KnowledgeGraphApp {
 
   dispose(): void {
     window.removeEventListener("resize", this.resize);
+    window.removeEventListener("nebula:auto-arrange", this.autoArrange);
+    window.removeEventListener("nebula:reset-layout", this.resetLayout);
+    window.removeEventListener("nebula:reset-view", this.resetView);
     this.renderer.dispose();
     this.scene.dispose();
     this.engine.dispose();
@@ -74,6 +99,13 @@ export class KnowledgeGraphApp {
     camera.panningSensibility = 65;
     camera.minZ = 0.1;
     return camera;
+  }
+
+  private resetCamera(bounds = this.renderer.getLayoutBounds()): void {
+    this.camera.alpha = -Math.PI / 2.2;
+    this.camera.beta = Math.PI / 2.55;
+    this.camera.radius = Math.max(12, (bounds?.radius ?? 7) * 2.35);
+    this.camera.target = bounds?.center ?? Vector3.Zero();
   }
 
   private createLightingAndPostProcessing(): void {
@@ -99,18 +131,196 @@ export class KnowledgeGraphApp {
     pipeline.grain.intensity = 4;
   }
 
-  private bindPicking(): void {
+  private bindPointerControls(): void {
     this.scene.onPointerObservable.add((event) => {
-      if (event.type !== PointerEventTypes.POINTERPICK) {
+      if (event.type === PointerEventTypes.POINTERDOWN) {
+        this.handlePointerDown(event);
+      }
+
+      if (event.type === PointerEventTypes.POINTERMOVE) {
+        this.handlePointerMove(event);
+      }
+
+      if (event.type === PointerEventTypes.POINTERUP) {
+        this.handlePointerUp();
+      }
+    });
+  }
+
+  private handlePointerDown(event: PointerInfo): void {
+    const pointerEvent = event.event as PointerEvent;
+    if (pointerEvent.button !== 0) {
+      return;
+    }
+
+    const selection = this.renderer.resolveSelection(event.pickInfo?.pickedMesh ?? null);
+    if (!selection && pointerEvent.shiftKey) {
+      this.startBoxSelect(pointerEvent);
+      return;
+    }
+
+    if (!selection) {
+      this.setSelection(null);
+      return;
+    }
+
+    const selectedNodeIds = this.nodeIdsForDragSelection(selection);
+    const selectionToApply =
+      selection.type === "node" && selectedNodeIds.length > 1
+        ? this.renderer.selectionForNodeIds(selectedNodeIds)
+        : selection;
+    this.setSelection(selectionToApply);
+
+    if (selectedNodeIds.length === 0) {
+      return;
+    }
+
+    const center = this.renderer.getNodeCenter(selectedNodeIds);
+    if (!center) {
+      return;
+    }
+
+    const plane = Plane.FromPositionAndNormal(center, this.camera.getForwardRay().direction);
+    const startPoint = this.pointOnPlane(plane);
+    if (!startPoint) {
+      return;
+    }
+
+    this.camera.detachControl();
+    this.nodeDrag = { nodeIds: selectedNodeIds, plane, lastPoint: startPoint };
+  }
+
+  private handlePointerMove(event: PointerInfo): void {
+    if (this.nodeDrag) {
+      const nextPoint = this.pointOnPlane(this.nodeDrag.plane);
+      if (!nextPoint) {
         return;
       }
 
-      const selection = this.renderer.resolveSelection(event.pickInfo?.pickedMesh ?? null);
-      this.selection = selection;
-      this.renderer.applySelection(selection);
-      this.options.onSelectionChange(selection);
-    });
+      const delta = nextPoint.subtract(this.nodeDrag.lastPoint);
+      this.renderer.moveNodes(this.nodeDrag.nodeIds, delta);
+      this.nodeDrag.lastPoint = nextPoint;
+      return;
+    }
+
+    if (this.boxSelect) {
+      const pointerEvent = event.event as PointerEvent;
+      this.updateSelectionBox(pointerEvent.clientX, pointerEvent.clientY);
+    }
   }
+
+  private handlePointerUp(): void {
+    if (this.nodeDrag) {
+      this.nodeDrag = null;
+      this.camera.attachControl(this.options.canvas, true);
+      return;
+    }
+
+    if (!this.boxSelect) {
+      return;
+    }
+
+    const rect = this.selectionBox.getBoundingClientRect();
+    const selectedNodeIds = this.boxArea(rect) > 120 ? this.renderer.getNodeIdsInScreenRect(rect, this.options.canvas) : [];
+    this.hideSelectionBox();
+    this.boxSelect = null;
+    this.camera.attachControl(this.options.canvas, true);
+    this.setSelection(this.renderer.selectionForNodeIds(selectedNodeIds));
+  }
+
+  private setSelection(selection: Selection): void {
+    this.selection = selection;
+    this.renderer.applySelection(selection);
+    this.options.onSelectionChange(selection);
+  }
+
+  private nodeIdsForDragSelection(selection: Selection): string[] {
+    if (!selection) {
+      return [];
+    }
+
+    if (selection.type === "edge") {
+      return this.renderer.nodeIdsForEdge(selection.edge.id);
+    }
+
+    if (selection.type === "node") {
+      const currentNodeIds = this.renderer.nodeIdsForSelection(this.selection);
+      return currentNodeIds.includes(selection.node.id) ? currentNodeIds : [selection.node.id];
+    }
+
+    return this.renderer.nodeIdsForSelection(selection);
+  }
+
+  private pointOnPlane(plane: Plane): Vector3 | null {
+    const ray = this.scene.createPickingRay(this.scene.pointerX, this.scene.pointerY, Matrix.Identity(), this.camera);
+    const distance = ray.intersectsPlane(plane);
+    return distance === null ? null : ray.origin.add(ray.direction.scale(distance));
+  }
+
+  private startBoxSelect(pointerEvent: PointerEvent): void {
+    this.camera.detachControl();
+    this.boxSelect = { startX: pointerEvent.clientX, startY: pointerEvent.clientY };
+    this.selectionBox.style.display = "block";
+    this.updateSelectionBox(pointerEvent.clientX, pointerEvent.clientY);
+  }
+
+  private updateSelectionBox(currentX: number, currentY: number): void {
+    if (!this.boxSelect) {
+      return;
+    }
+
+    const canvasRect = this.options.canvas.getBoundingClientRect();
+    const left = Math.min(this.boxSelect.startX, currentX);
+    const top = Math.min(this.boxSelect.startY, currentY);
+    const width = Math.abs(currentX - this.boxSelect.startX);
+    const height = Math.abs(currentY - this.boxSelect.startY);
+
+    this.selectionBox.style.left = `${left - canvasRect.left}px`;
+    this.selectionBox.style.top = `${top - canvasRect.top}px`;
+    this.selectionBox.style.width = `${width}px`;
+    this.selectionBox.style.height = `${height}px`;
+  }
+
+  private hideSelectionBox(): void {
+    this.selectionBox.style.display = "none";
+    this.selectionBox.style.width = "0";
+    this.selectionBox.style.height = "0";
+  }
+
+  private boxArea(rect: DOMRect): number {
+    return rect.width * rect.height;
+  }
+
+  private createSelectionBox(): HTMLDivElement {
+    const selectionBox = document.createElement("div");
+    selectionBox.className = "selection-box";
+    selectionBox.setAttribute("aria-hidden", "true");
+    this.options.canvas.parentElement?.append(selectionBox);
+    return selectionBox;
+  }
+
+  private bindGlobalControls(): void {
+    window.addEventListener("nebula:auto-arrange", this.autoArrange);
+    window.addEventListener("nebula:reset-layout", this.resetLayout);
+    window.addEventListener("nebula:reset-view", this.resetView);
+  }
+
+  private autoArrange = (): void => {
+    const result = this.renderer.autoArrange(this.selection);
+    if (result === "all") {
+      this.resetCamera(this.renderer.getLayoutBounds());
+    }
+  };
+
+  private resetLayout = (): void => {
+    this.renderer.resetLayout();
+    this.resetCamera(this.renderer.getLayoutBounds());
+    this.setSelection(null);
+  };
+
+  private resetView = (): void => {
+    this.resetCamera();
+  };
 
   private resize = (): void => {
     this.engine.resize();

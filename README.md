@@ -30,6 +30,7 @@ The dev server runs at `http://127.0.0.1:5173/`.
 - The UI overlay is currently framework-free HTML/CSS/TypeScript to avoid adding reconciliation overhead to the graph renderer.
 - The renderer is isolated from the overlay so React, Vue, Solid, or another UI framework can be introduced later for panels and workflows without moving Babylon under that framework.
 - Graph data enters through a typed mock API boundary and can be replaced by real integrations later.
+- Backend planning assumes Neo4j as the graph store behind a product-level API. See [Backend API Contract](docs/backend-api-contract.md).
 
 ## Verification
 

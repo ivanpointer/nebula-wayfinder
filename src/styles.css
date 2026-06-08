@@ -83,6 +83,10 @@ body {
   font-size: 15px;
 }
 
+.toolbar-button {
+  min-width: 82px;
+}
+
 .legend {
   left: 20px;
   bottom: 20px;
@@ -117,6 +121,18 @@ body {
   overflow: auto;
   padding: 18px;
   border-radius: 8px;
+}
+
+.selection-box {
+  position: absolute;
+  z-index: 3;
+  display: none;
+  pointer-events: none;
+  border: 1px solid rgba(143, 179, 255, 0.9);
+  background: rgba(143, 179, 255, 0.12);
+  box-shadow:
+    inset 0 0 18px rgba(143, 179, 255, 0.16),
+    0 0 24px rgba(143, 179, 255, 0.2);
 }
 
 .eyebrow {

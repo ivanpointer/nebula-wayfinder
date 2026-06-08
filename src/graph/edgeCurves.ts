@@ -17,6 +17,24 @@ export function makeEdgeCurve(source: VectorTuple, target: VectorTuple, lift = 1
   return points;
 }
 
+export function pointBeforeTarget(points: Vector3[], target: Vector3, distanceFromTarget: number): Vector3 {
+  let remaining = distanceFromTarget;
+  let previous = target;
+
+  for (let index = points.length - 2; index >= 0; index -= 1) {
+    const current = points[index];
+    const segmentLength = Vector3.Distance(previous, current);
+    if (segmentLength >= remaining) {
+      return previous.subtract(previous.subtract(current).normalize().scale(remaining));
+    }
+
+    remaining -= segmentLength;
+    previous = current;
+  }
+
+  return points[0] ?? target;
+}
+
 export function toVector3(position: VectorTuple): Vector3 {
   return new Vector3(position.x, position.y, position.z);
 }

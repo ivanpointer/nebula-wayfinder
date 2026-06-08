@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { makeEdgeCurve } from "../../src/graph/edgeCurves";
-import { layoutGraphClouds } from "../../src/graph/layout";
+import { makeEdgeCurve, pointBeforeTarget } from "../../src/graph/edgeCurves";
+import { arrangeNodes, layoutGraphClouds } from "../../src/graph/layout";
 import { mockGraphScene } from "../../src/data/mockGraphScene";
+import type { GraphCloud } from "../../src/domain/types";
 
 describe("graph layout", () => {
   it("positions every node across multiple graph clouds", () => {
@@ -10,6 +11,28 @@ describe("graph layout", () => {
 
     expect(positioned).toHaveLength(nodeCount);
     expect(new Set(positioned.map((node) => node.graphId)).size).toBe(mockGraphScene.graphs.length);
+  });
+
+  it("places directed targets after their sources", () => {
+    const graph = graphById("agent-cloud");
+    const positions = arrangeNodes(graph.nodes, graph.edges);
+
+    graph.edges
+      .filter((edge) => edge.directed && positions.has(edge.source) && positions.has(edge.target))
+      .forEach((edge) => {
+        expect(positions.get(edge.target)?.x).toBeGreaterThan(positions.get(edge.source)?.x ?? Number.NEGATIVE_INFINITY);
+      });
+  });
+
+  it("isolates disconnected components into separate clouds", () => {
+    const graph = graphById("task-cloud");
+    const positions = arrangeNodes(graph.nodes, graph.edges);
+    const connected = positions.get("task-follow-up");
+    const disconnected = positions.get("task-archive");
+
+    expect(connected).toBeDefined();
+    expect(disconnected).toBeDefined();
+    expect(Math.abs((connected?.x ?? 0) - (disconnected?.x ?? 0))).toBeGreaterThan(2);
   });
 });
 
@@ -22,4 +45,22 @@ describe("edge curves", () => {
     expect(points.at(-1)?.x).toBe(4);
     expect(Math.max(...points.map((point) => point.y))).toBeGreaterThan(0.5);
   });
+
+  it("finds a point near the target along the curve", () => {
+    const points = makeEdgeCurve({ x: 0, y: 0, z: 0 }, { x: 4, y: 0, z: 0 });
+    const target = points[points.length - 1];
+    const point = pointBeforeTarget(points, target, 0.5);
+
+    expect(point.x).toBeGreaterThan(3.3);
+    expect(point.x).toBeLessThan(4);
+  });
 });
+
+function graphById(id: string): GraphCloud {
+  const graph = mockGraphScene.graphs.find((item) => item.id === id);
+  if (!graph) {
+    throw new Error(`Missing fixture graph: ${id}`);
+  }
+
+  return graph;
+}

@@ -1,0 +1,221 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: #06080d;
+  color: #f5f7fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(21, 115, 126, 0.2), transparent 32rem),
+    radial-gradient(circle at 78% 12%, rgba(198, 91, 62, 0.16), transparent 28rem),
+    linear-gradient(135deg, #06080d 0%, #0b1118 58%, #101216 100%);
+}
+
+#renderCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  touch-action: none;
+}
+
+.toolbar,
+.legend,
+.inspector {
+  position: absolute;
+  z-index: 2;
+  backdrop-filter: blur(18px);
+  background: rgba(9, 14, 20, 0.72);
+  border: 1px solid rgba(190, 220, 255, 0.16);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.32);
+}
+
+.toolbar {
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(720px, calc(100vw - 40px));
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+
+.toolbar-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.toolbar-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 74px;
+  padding-left: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.toolbar-stat span {
+  color: #9dafc1;
+  font-size: 11px;
+}
+
+.toolbar-stat strong {
+  font-size: 15px;
+}
+
+.legend {
+  left: 20px;
+  bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 8px 14px;
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d8e0ea;
+  font-size: 12px;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.inspector {
+  top: 20px;
+  right: 20px;
+  width: min(360px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  padding: 18px;
+  border-radius: 8px;
+}
+
+.eyebrow {
+  color: #9dafc1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 4px 0 12px;
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.summary {
+  margin: 0 0 16px;
+  color: #c8d2de;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.field-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.2fr);
+  gap: 10px;
+  align-items: start;
+  color: #e6edf5;
+  font-size: 13px;
+}
+
+.field dt {
+  color: #91a4b8;
+}
+
+.field dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #f5f7fb;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.empty-state {
+  color: #bcc8d7;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .toolbar {
+    right: 20px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-title {
+    width: 100%;
+  }
+
+  .inspector {
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-height: 42vh;
+    padding: 14px;
+  }
+
+  .legend {
+    display: none;
+  }
+}

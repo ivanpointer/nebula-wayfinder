@@ -2,6 +2,12 @@ import { KnowledgeGraphApp } from "./render/KnowledgeGraphApp";
 import { createOverlay } from "./ui/overlay";
 import { createActionService } from "./services/actionService";
 import { fetchGraphScene } from "./services/graphService";
+import {
+  applyStoredNodePositions,
+  clearStoredNodePositions,
+  readStoredNodePositions,
+  writeStoredNodePositions,
+} from "./services/layoutPersistence";
 import "./styles.css";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#renderCanvas");
@@ -19,10 +25,12 @@ const overlay = createOverlay({ inspector, toolbar, legend, graphScene, actionSe
 
 const app = new KnowledgeGraphApp({
   canvas,
-  graphScene,
+  graphScene: applyStoredNodePositions(graphScene, readStoredNodePositions()),
   actionService,
   onSelectionChange: overlay.renderSelection,
+  onLayoutChange: writeStoredNodePositions,
+  onLayoutReset: clearStoredNodePositions,
 });
 
-overlay.onActionResult((updatedScene) => app.updateScene(updatedScene));
+overlay.onActionResult((updatedScene) => app.updateScene(applyStoredNodePositions(updatedScene, readStoredNodePositions())));
 app.start();

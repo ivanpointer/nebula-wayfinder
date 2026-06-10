@@ -11,7 +11,8 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import { makeEdgeCurve, pointBeforeTarget, toVector3 } from "../graph/edgeCurves";
 import { arrangeNodes, layoutGraphClouds, type PositionedNode } from "../graph/layout";
-import type { GraphEdge, GraphNode, GraphSceneData, Selection } from "../domain/types";
+import type { GraphEdge, GraphNode, GraphSceneData, Selection, VectorTuple } from "../domain/types";
+import { clearFixedNodePositions, type NodePositionMap } from "../services/layoutPersistence";
 import { createEdgeArrowMaterial, createEdgeGlowMaterial, createEdgeMaterial, createNodeMaterial, domainPalette } from "./materials";
 import { NODE_FLOOR_CLEARANCE, REFLECTIVE_FLOOR_Y } from "./sceneBounds";
 
@@ -147,7 +148,7 @@ export class GraphRenderer {
       return;
     }
 
-    this.render(this.sceneData);
+    this.render(clearFixedNodePositions(this.sceneData));
     this.applySelection(null);
   }
 
@@ -294,14 +295,14 @@ export class GraphRenderer {
     return { type: "nodes", nodes };
   }
 
-  moveNodes(nodeIds: string[], delta: Vector3): void {
+  moveNodes(nodeIds: string[], delta: Vector3): boolean {
     if (nodeIds.length === 0 || delta.lengthSquared() === 0) {
-      return;
+      return false;
     }
 
     const movementDelta = this.constrainDragDelta(nodeIds, delta);
     if (movementDelta.lengthSquared() === 0) {
-      return;
+      return false;
     }
 
     nodeIds.forEach((nodeId) => {
@@ -316,6 +317,7 @@ export class GraphRenderer {
 
     this.rebuildEdges();
     this.emitThrottledMovementEvent(nodeIds, 0.32);
+    return true;
   }
 
   getNodeCenter(nodeIds: string[]): Vector3 | null {
@@ -342,6 +344,15 @@ export class GraphRenderer {
       1,
     );
     return { center, radius };
+  }
+
+  getNodePositions(): NodePositionMap {
+    return Object.fromEntries(
+      Array.from(this.nodes.entries()).map(([nodeId, rendered]) => {
+        const position = this.transitions.get(nodeId)?.to ?? rendered.root.position;
+        return [nodeId, toVectorTuple(position)];
+      }),
+    );
   }
 
   nodeIdsForSelection(selection: Selection): string[] {
@@ -1053,6 +1064,14 @@ function clampNodePosition(position: Vector3, connectionRadius: number): Vector3
 
 function nodeFloorLimit(connectionRadius: number): number {
   return REFLECTIVE_FLOOR_Y + connectionRadius + NODE_FLOOR_CLEARANCE;
+}
+
+function toVectorTuple(position: Vector3): VectorTuple {
+  return {
+    x: position.x,
+    y: position.y,
+    z: position.z,
+  };
 }
 
 function nodeAnimationFingerprint(node: GraphNode): string {

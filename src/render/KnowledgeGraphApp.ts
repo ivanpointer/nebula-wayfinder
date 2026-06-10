@@ -15,6 +15,7 @@ import { GlowLayer } from "@babylonjs/core/Layers/glowLayer";
 import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
 import type { ActionService } from "../services/actionService";
 import type { GraphSceneData, Selection } from "../domain/types";
+import type { NodePositionMap } from "../services/layoutPersistence";
 import { GraphRenderer } from "./GraphRenderer";
 import {
   CAMERA_FLOOR_TARGET_CLEARANCE,
@@ -29,12 +30,15 @@ interface KnowledgeGraphAppOptions {
   graphScene: GraphSceneData;
   actionService: ActionService;
   onSelectionChange: (selection: Selection) => void;
+  onLayoutChange?: (positions: NodePositionMap) => void;
+  onLayoutReset?: () => void;
 }
 
 interface NodeDragState {
   nodeIds: string[];
   plane: Plane;
   lastPoint: Vector3;
+  moved: boolean;
 }
 
 interface BoxSelectState {
@@ -234,7 +238,7 @@ export class KnowledgeGraphApp {
     }
 
     this.camera.detachControl();
-    this.nodeDrag = { nodeIds: selectedNodeIds, plane, lastPoint: startPoint };
+    this.nodeDrag = { nodeIds: selectedNodeIds, plane, lastPoint: startPoint, moved: false };
   }
 
   private handlePointerMove(event: PointerInfo): void {
@@ -245,7 +249,7 @@ export class KnowledgeGraphApp {
       }
 
       const delta = nextPoint.subtract(this.nodeDrag.lastPoint);
-      this.renderer.moveNodes(this.nodeDrag.nodeIds, delta);
+      this.nodeDrag.moved = this.renderer.moveNodes(this.nodeDrag.nodeIds, delta) || this.nodeDrag.moved;
       this.nodeDrag.lastPoint = nextPoint;
       return;
     }
@@ -258,6 +262,9 @@ export class KnowledgeGraphApp {
 
   private handlePointerUp(): void {
     if (this.nodeDrag) {
+      if (this.nodeDrag.moved) {
+        this.persistLayout();
+      }
       this.nodeDrag = null;
       this.camera.attachControl(this.options.canvas, true);
       return;
@@ -357,9 +364,13 @@ export class KnowledgeGraphApp {
     if (result === "all") {
       this.resetCamera(this.renderer.getLayoutBounds());
     }
+    if (result !== "none") {
+      this.persistLayout();
+    }
   };
 
   private resetLayout = (): void => {
+    this.options.onLayoutReset?.();
     this.renderer.resetLayout();
     this.resetCamera(this.renderer.getLayoutBounds());
     this.setSelection(null);
@@ -372,6 +383,10 @@ export class KnowledgeGraphApp {
   private resize = (): void => {
     this.engine.resize();
   };
+
+  private persistLayout(): void {
+    this.options.onLayoutChange?.(this.renderer.getNodePositions());
+  }
 }
 
 function constrainCameraTarget(target: Vector3): Vector3 {

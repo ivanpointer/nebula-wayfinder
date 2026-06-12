@@ -1,4 +1,11 @@
-export type NodeDomain = "task" | "contact" | "email" | "message" | "agent-session";
+// Node domains map 1-to-1 with the primary Neo4j label used in unibrain.
+// This list will grow as unibrain adds new vertex types.
+export type NodeDomain =
+  | "todo"
+  | "email"
+  | "person"
+  | "organization"
+  | "action-proposal";
 
 export type GraphNodeStatus =
   | "active"
@@ -7,7 +14,8 @@ export type GraphNodeStatus =
   | "dismissed"
   | "idle"
   | "unread"
-  | "waiting";
+  | "waiting"
+  | "draft";
 
 export type Priority = "low" | "medium" | "high" | "urgent";
 
@@ -17,6 +25,7 @@ export interface SourceReference {
   url?: string;
 }
 
+// Populated on every node that came from Neo4j.
 export interface BackendReference {
   store: "neo4j";
   elementId: string;
@@ -35,77 +44,80 @@ export interface BaseNode {
   fixedPosition?: VectorTuple;
 }
 
-export interface TaskNode extends BaseNode {
-  domain: "task";
+// :Todo — extracted task items (from emails, etc.)
+export interface TodoNode extends BaseNode {
+  domain: "todo";
   title: string;
+  details?: string;
   dueDate?: string;
   priority: Priority;
-  completed: boolean;
-  dismissed?: boolean;
-  project?: string;
+  todoStatus: "open" | "in_progress" | "waiting" | "done" | "canceled";
+  reviewStatus: string;   // e.g. "draft"
+  evidence?: string;
+  confidence?: number;
 }
 
-export interface ContactNode extends BaseNode {
-  domain: "contact";
-  name: string;
-  organization?: string;
-  role?: string;
-  communicationRefs: SourceReference[];
-}
-
+// :EmailMessage :RawIntake — normalized inbound email
 export interface EmailNode extends BaseNode {
   domain: "email";
   sender: string;
+  senderName?: string;
   subject: string;
   timestamp: string;
   unread: boolean;
-  followUp: boolean;
-  dismissed?: boolean;
+  threadId?: string;
 }
 
-export interface MessageNode extends BaseNode {
-  domain: "message";
-  sender: string;
-  channel: string;
-  thread?: string;
-  timestamp: string;
-  unread: boolean;
-  followUp: boolean;
-  dismissed?: boolean;
+// :Person — identity record inferred from email senders/recipients
+export interface PersonNode extends BaseNode {
+  domain: "person";
+  displayName: string;
+  primaryEmail?: string;
+  organization?: string;
 }
 
-export type AgentSessionStatus = "running" | "paused" | "waiting" | "complete" | "failed";
-
-export interface AgentSessionNode extends BaseNode {
-  domain: "agent-session";
-  agentName: string;
-  runtime: string;
-  model: string;
-  taskSummary: string;
-  sessionStatus: AgentSessionStatus;
-  startedAt: string;
-  updatedAt: string;
-  owner?: string;
-  relatedArtifacts: SourceReference[];
+// :Organization — inferred from non-public email domains
+export interface OrganizationNode extends BaseNode {
+  domain: "organization";
+  orgName: string;
+  domain_name?: string;   // the email domain, e.g. "acme.com"
 }
 
-export type GraphNode = TaskNode | ContactNode | EmailNode | MessageNode | AgentSessionNode;
+// :ActionProposal — AI-proposed action, draft review state
+export interface ActionProposalNode extends BaseNode {
+  domain: "action-proposal";
+  proposalTitle: string;
+  riskLevel?: string;
+  proposalStatus: string;
+  confidence?: number;
+}
 
+export type GraphNode =
+  | TodoNode
+  | EmailNode
+  | PersonNode
+  | OrganizationNode
+  | ActionProposalNode;
+
+// Relationship kinds present in unibrain, plus generic fallbacks.
 export type EdgeKind =
-  | "assigned_to"
-  | "blocked_by"
-  | "mentions"
   | "sent_by"
-  | "working_on"
+  | "sent_to"
+  | "cc_to"
+  | "has_todo"
   | "produced"
-  | "referenced"
-  | "follow_up_from"
-  | "related_to";
+  | "evidenced_by"
+  | "analyzed_by"
+  | "derived_from"
+  | "has_email"
+  | "works_at"
+  | "related_to"
+  | "referenced";
 
 export interface GraphEdge {
   id: string;
-  source: string;
-  target: string;
+  source: string;     // node id
+  target: string;     // node id
   kind: EdgeKind;
   label?: string;
   directed?: boolean;
@@ -119,6 +131,7 @@ export interface GraphEdge {
   };
 }
 
+// A "cloud" is a named subgraph grouping related nodes.
 export interface GraphCloud {
   id: string;
   label: string;
@@ -147,12 +160,12 @@ export type Selection =
   | null;
 
 export type ActionId =
-  | "task.markDone"
-  | "task.dismiss"
-  | "task.priority.low"
-  | "task.priority.medium"
-  | "task.priority.high"
-  | "task.priority.urgent";
+  | "todo.markDone"
+  | "todo.dismiss"
+  | "todo.priority.low"
+  | "todo.priority.medium"
+  | "todo.priority.high"
+  | "todo.priority.urgent";
 
 export interface NodeAction {
   id: ActionId;

@@ -47,10 +47,10 @@ describe("layout persistence", () => {
   it("overlays stored node positions without mutating the source scene", () => {
     const scene = structuredClone(mockGraphScene);
     const updated = applyStoredNodePositions(scene, {
-      "task-follow-up": { x: 8, y: 3, z: -2 },
+      "todo-follow-up": { x: 8, y: 3, z: -2 },
     });
-    const updatedNode = updated.graphs.flatMap((graph) => graph.nodes).find((node) => node.id === "task-follow-up");
-    const sourceNode = scene.graphs.flatMap((graph) => graph.nodes).find((node) => node.id === "task-follow-up");
+    const updatedNode = updated.graphs.flatMap((graph) => graph.nodes).find((node) => node.id === "todo-follow-up");
+    const sourceNode = scene.graphs.flatMap((graph) => graph.nodes).find((node) => node.id === "todo-follow-up");
 
     expect(updatedNode?.fixedPosition).toEqual({ x: 8, y: 3, z: -2 });
     expect(sourceNode?.fixedPosition).toBeUndefined();
@@ -58,13 +58,13 @@ describe("layout persistence", () => {
 
   it("clears fixed positions from a scene and storage", () => {
     const storage = new MemoryStorage();
-    writeStoredNodePositions({ "task-follow-up": { x: 8, y: 3, z: -2 } }, storage);
+    writeStoredNodePositions({ "todo-follow-up": { x: 8, y: 3, z: -2 } }, storage);
 
     const fixedScene = applyStoredNodePositions(mockGraphScene, {
-      "task-follow-up": { x: 8, y: 3, z: -2 },
+      "todo-follow-up": { x: 8, y: 3, z: -2 },
     });
     const clearedScene = clearFixedNodePositions(fixedScene);
-    const clearedNode = clearedScene.graphs.flatMap((graph) => graph.nodes).find((node) => node.id === "task-follow-up");
+    const clearedNode = clearedScene.graphs.flatMap((graph) => graph.nodes).find((node) => node.id === "todo-follow-up");
 
     clearStoredNodePositions(storage);
 

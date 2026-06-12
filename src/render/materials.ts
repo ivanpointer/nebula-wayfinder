@@ -5,11 +5,11 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { GraphNode, NodeDomain } from "../domain/types";
 
 export const domainPalette: Record<NodeDomain, Color3> = {
-  task: Color3.FromHexString("#4fd1c5"),
-  contact: Color3.FromHexString("#f5c76b"),
+  todo: Color3.FromHexString("#4fd1c5"),
   email: Color3.FromHexString("#8fb3ff"),
-  message: Color3.FromHexString("#c77dff"),
-  "agent-session": Color3.FromHexString("#ff7a59"),
+  person: Color3.FromHexString("#f5c76b"),
+  organization: Color3.FromHexString("#c77dff"),
+  "action-proposal": Color3.FromHexString("#ff7a59"),
 };
 
 export function createNodeMaterial(scene: Scene, node: GraphNode): PBRMaterial {

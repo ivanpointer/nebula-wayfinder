@@ -143,6 +143,31 @@ export class GraphRenderer {
     this.playSceneDiff(previous);
   }
 
+  setVisibleDomains(visible: Set<string>): void {
+    // Track which node IDs are visible so edges can follow.
+    const visibleNodeIds = new Set<string>();
+
+    this.nodes.forEach((rendered) => {
+      const show = visible.has(rendered.node.domain);
+      rendered.mesh.setEnabled(show);
+      rendered.core.setEnabled(show);
+      rendered.mesh.isPickable = show;
+      rendered.core.isPickable = show;
+      if (rendered.fire) {
+        show ? rendered.fire.start() : rendered.fire.stop();
+      }
+      if (show) visibleNodeIds.add(rendered.node.id);
+    });
+
+    this.edges.forEach((rendered) => {
+      const show = visibleNodeIds.has(rendered.edge.source) && visibleNodeIds.has(rendered.edge.target);
+      rendered.mesh.setEnabled(show);
+      rendered.glow.setEnabled(show);
+      rendered.arrow?.setEnabled(show);
+      rendered.flow?.setEnabled(show);
+    });
+  }
+
   resetLayout(): void {
     if (!this.sceneData) {
       return;
@@ -382,7 +407,7 @@ export class GraphRenderer {
 
     const sphere = MeshBuilder.CreateSphere(
       `node-${node.id}`,
-      { diameter: node.domain === "agent-session" ? 1.04 : 0.86, segments: 32 },
+      { diameter: node.domain === "action-proposal" ? 1.04 : 0.86, segments: 32 },
       this.scene,
     );
     sphere.parent = visualRoot;
@@ -831,7 +856,7 @@ export class GraphRenderer {
       return undefined;
     }
 
-    const radius = node.domain === "agent-session" ? 0.64 : 0.52;
+    const radius = node.domain === "action-proposal" ? 0.64 : 0.52;
     const fire = new ParticleSystem(`node-fire-${node.id}`, Math.round(110 + intensity * 180), this.scene);
     const color = domainPalette[node.domain];
     fire.particleTexture = this.getFireTexture();
@@ -953,17 +978,17 @@ export class GraphRenderer {
   }
 }
 
-function colorForToken(token: string): Color3 {
-  const tokenColor = {
-    task: "#4fd1c5",
-    contact: "#f5c76b",
-    email: "#8fb3ff",
-    message: "#c77dff",
-    agent: "#ff7a59",
-    urgent: "#ff4d6d",
-  }[token];
+const COLOR_TOKENS: Record<string, string> = {
+  todo: "#4fd1c5",
+  email: "#8fb3ff",
+  person: "#f5c76b",
+  organization: "#c77dff",
+  "action-proposal": "#ff7a59",
+  urgent: "#ff4d6d",
+};
 
-  return Color3.FromHexString(tokenColor ?? "#9fb7c7");
+function colorForToken(token: string): Color3 {
+  return Color3.FromHexString(COLOR_TOKENS[token] ?? "#9fb7c7");
 }
 
 function pointOnPath(path: Vector3[], progress: number): Vector3 {
@@ -1015,15 +1040,16 @@ function idleAmplitude(node: GraphNode): number {
 }
 
 function idleSpeed(node: GraphNode): number {
-  const domainSpeed = {
-    task: 1.35,
-    contact: 0.95,
+  const domainSpeed: Record<string, number> = {
+    todo: 1.35,
     email: 1.52,
-    message: 1.68,
-    "agent-session": 1.9,
-  }[node.domain];
+    person: 0.95,
+    organization: 0.82,
+    "action-proposal": 1.9,
+  };
 
-  return node.status === "active" || node.status === "unread" ? domainSpeed * 1.18 : domainSpeed;
+  const speed = domainSpeed[node.domain] ?? 1.2;
+  return node.status === "active" || node.status === "unread" ? speed * 1.18 : speed;
 }
 
 function baseEmission(node: GraphNode): number {
@@ -1078,10 +1104,9 @@ function nodeAnimationFingerprint(node: GraphNode): string {
   return JSON.stringify({
     status: node.status,
     priority: "priority" in node ? node.priority : undefined,
-    completed: "completed" in node ? node.completed : undefined,
-    dismissed: "dismissed" in node ? node.dismissed : undefined,
+    todoStatus: "todoStatus" in node ? node.todoStatus : undefined,
     unread: "unread" in node ? node.unread : undefined,
-    sessionStatus: "sessionStatus" in node ? node.sessionStatus : undefined,
+    proposalStatus: "proposalStatus" in node ? node.proposalStatus : undefined,
   });
 }
 
@@ -1090,22 +1115,21 @@ function fireIntensity(node: GraphNode): number {
     return 0;
   }
 
-  if (node.domain === "agent-session") {
-    return node.sessionStatus === "running" ? 0.88 : node.sessionStatus === "waiting" ? 0.54 : 0.36;
+  if (node.domain === "action-proposal") {
+    return node.proposalStatus === "draft" ? 0.54 : 0.36;
   }
 
-  if (node.domain === "task") {
-    const priorityIntensity = {
+  if (node.domain === "todo") {
+    const priorityIntensity: Record<string, number> = {
       urgent: 0.95,
       high: 0.62,
       medium: node.status === "active" ? 0.38 : 0.16,
       low: node.status === "active" ? 0.22 : 0.12,
-    }[node.priority];
-
-    return priorityIntensity;
+    };
+    return priorityIntensity[node.priority] ?? 0.16;
   }
 
-  if ((node.domain === "email" || node.domain === "message") && node.unread) {
+  if (node.domain === "email" && node.unread) {
     return 0.56;
   }
 

@@ -63,6 +63,10 @@ export class KnowledgeGraphApp {
 
   private selectionBox: HTMLDivElement;
 
+  private glowLayer!: GlowLayer;
+
+  private renderPipeline!: DefaultRenderingPipeline;
+
   constructor(private options: KnowledgeGraphAppOptions) {
     this.engine = new Engine(options.canvas, true, {
       preserveDrawingBuffer: true,
@@ -125,22 +129,37 @@ export class KnowledgeGraphApp {
     this.camera.target = constrainCameraTarget(bounds?.center ?? Vector3.Zero());
   }
 
+  setVisibleDomains(visible: Set<string>): void {
+    this.renderer.setVisibleDomains(visible);
+  }
+
+  // brightness is a 0–1 user value; 0.5 is the default (matching original settings).
+  setBrightness(value: number): void {
+    const t = Math.max(0, Math.min(1, value));
+    // exposure: 0 → 0.3, 0.5 → 1.04 (original), 1 → 2.2
+    this.renderPipeline.imageProcessing.exposure = 0.3 + t * t * 1.9;
+    // glow: 0 → 0.05, 0.5 → 0.98 (original), 1 → 1.8
+    this.glowLayer.intensity = 0.05 + t * 1.75;
+    // bloom weight: 0 → 0.1, 0.5 → 0.52, 1 → 1.2
+    this.renderPipeline.bloomWeight = 0.1 + t * 1.1;
+  }
+
   private createLightingAndPostProcessing(): void {
     this.createReflectiveFloor();
 
-    const glow = new GlowLayer("node-glow", this.scene);
-    glow.intensity = 0.98;
-    glow.blurKernelSize = 64;
+    this.glowLayer = new GlowLayer("node-glow", this.scene);
+    this.glowLayer.intensity = 0.98;
+    this.glowLayer.blurKernelSize = 64;
 
-    const pipeline = new DefaultRenderingPipeline("render-pipeline", true, this.scene, [this.camera]);
-    pipeline.bloomEnabled = true;
-    pipeline.bloomThreshold = 0.14;
-    pipeline.bloomWeight = 0.52;
-    pipeline.fxaaEnabled = true;
-    pipeline.imageProcessing.contrast = 1.2;
-    pipeline.imageProcessing.exposure = 1.04;
-    pipeline.grainEnabled = true;
-    pipeline.grain.intensity = 2.8;
+    this.renderPipeline = new DefaultRenderingPipeline("render-pipeline", true, this.scene, [this.camera]);
+    this.renderPipeline.bloomEnabled = true;
+    this.renderPipeline.bloomThreshold = 0.14;
+    this.renderPipeline.bloomWeight = 0.52;
+    this.renderPipeline.fxaaEnabled = true;
+    this.renderPipeline.imageProcessing.contrast = 1.2;
+    this.renderPipeline.imageProcessing.exposure = 1.04;
+    this.renderPipeline.grainEnabled = true;
+    this.renderPipeline.grain.intensity = 2.8;
   }
 
   private createReflectiveFloor(): void {

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@babylonjs/core": "^8.14.0",
+    "neo4j-driver": "^6.1.0",
     "vite": "^7.2.4"
   },
   "devDependencies": {

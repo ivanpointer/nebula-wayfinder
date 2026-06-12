@@ -1,5 +1,47 @@
 import type { ActionService } from "../services/actionService";
-import type { ActionId, GraphSceneData, GraphNode, Selection } from "../domain/types";
+import type {
+  ActionId,
+  BaseNode,
+  GraphSceneData,
+  GraphNode,
+  Selection,
+  TodoNode,
+  EmailNode,
+  PersonNode,
+  OrganizationNode,
+  ActionProposalNode,
+} from "../domain/types";
+
+const BRIGHTNESS_STORAGE_KEY = "nebula-wayfinder:brightness:v1";
+const BRIGHTNESS_DEFAULT = 0.5;
+
+export function loadBrightness(): number {
+  const stored = localStorage.getItem(BRIGHTNESS_STORAGE_KEY);
+  const parsed = stored !== null ? parseFloat(stored) : NaN;
+  return isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : BRIGHTNESS_DEFAULT;
+}
+
+function saveBrightness(value: number): void {
+  localStorage.setItem(BRIGHTNESS_STORAGE_KEY, String(value));
+}
+
+const VISIBILITY_STORAGE_KEY = "nebula-wayfinder:domain-visibility:v1";
+
+export function loadVisibleDomains(allDomains: string[]): Set<string> {
+  try {
+    const raw = localStorage.getItem(VISIBILITY_STORAGE_KEY);
+    if (!raw) return new Set(allDomains);
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed) && parsed.every((d) => typeof d === "string")) {
+      return new Set(parsed as string[]);
+    }
+  } catch { /* ignore */ }
+  return new Set(allDomains);
+}
+
+function saveVisibleDomains(visible: Set<string>): void {
+  localStorage.setItem(VISIBILITY_STORAGE_KEY, JSON.stringify([...visible]));
+}
 
 interface OverlayOptions {
   inspector: HTMLElement;
@@ -7,6 +49,8 @@ interface OverlayOptions {
   legend: HTMLElement;
   graphScene: GraphSceneData;
   actionService: ActionService;
+  onBrightnessChange: (value: number) => void;
+  onVisibilityChange: (visible: Set<string>) => void;
 }
 
 type ActionListener = (scene: GraphSceneData) => void;
@@ -42,11 +86,17 @@ export function createOverlay(options: OverlayOptions) {
   const renderChrome = (): void => {
     const nodeCount = options.graphScene.graphs.reduce((total, graph) => total + graph.nodes.length, 0);
     const edgeCount = options.graphScene.graphs.reduce((total, graph) => total + graph.edges.length, 0);
+    const brightness = loadBrightness();
     options.toolbar.innerHTML = `
       <div class="toolbar-title">Nebula Wayfinder</div>
       <div class="toolbar-stat"><span>Clouds</span><strong>${options.graphScene.graphs.length}</strong></div>
       <div class="toolbar-stat"><span>Nodes</span><strong>${nodeCount}</strong></div>
       <div class="toolbar-stat"><span>Edges</span><strong>${edgeCount}</strong></div>
+      <label class="toolbar-slider-label">
+        <span>Brightness</span>
+        <input type="range" class="toolbar-slider" data-control="brightness"
+          min="0" max="1" step="0.01" value="${brightness}">
+      </label>
       <button type="button" class="toolbar-button" data-command="auto-arrange">Auto arrange</button>
       <button type="button" class="toolbar-button" data-command="reset-view">Reset view</button>
       <button type="button" class="toolbar-button" data-command="reset-layout">Reset layout</button>
@@ -62,22 +112,52 @@ export function createOverlay(options: OverlayOptions) {
       window.dispatchEvent(new CustomEvent("nebula:reset-layout"));
     });
 
-    options.legend.innerHTML = [
-      ["#4fd1c5", "Tasks"],
-      ["#f5c76b", "Contacts"],
-      ["#8fb3ff", "Email"],
-      ["#c77dff", "Messages"],
-      ["#ff7a59", "AI sessions"],
-    ]
-      .map(
-        ([color, label]) => `
-          <div class="legend-item">
-            <span class="swatch" style="color: ${color}; background: ${color}"></span>
+    const slider = options.toolbar.querySelector<HTMLInputElement>('[data-control="brightness"]');
+    slider?.addEventListener("input", () => {
+      const value = parseFloat(slider.value);
+      saveBrightness(value);
+      options.onBrightnessChange(value);
+    });
+
+    const DOMAIN_ENTRIES: Array<[string, string, string]> = [
+      ["todo",            "#4fd1c5", "Todos"],
+      ["email",           "#8fb3ff", "Email"],
+      ["person",          "#f5c76b", "People"],
+      ["organization",    "#c77dff", "Orgs"],
+      ["action-proposal", "#ff7a59", "Proposals"],
+    ];
+
+    const allDomains = DOMAIN_ENTRIES.map(([d]) => d);
+    const visibleDomains = loadVisibleDomains(allDomains);
+
+    options.legend.innerHTML = `
+      <div class="legend-header">Node types</div>
+      ${DOMAIN_ENTRIES.map(([domain, color, label]) => {
+        const active = visibleDomains.has(domain);
+        return `
+          <button type="button" class="legend-toggle ${active ? "legend-toggle--on" : "legend-toggle--off"}"
+            data-domain="${domain}" style="--swatch: ${color}">
+            <span class="swatch"></span>
             <span>${label}</span>
-          </div>
-        `,
-      )
-      .join("");
+          </button>
+        `;
+      }).join("")}
+    `;
+
+    options.legend.querySelectorAll<HTMLButtonElement>(".legend-toggle").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const domain = btn.dataset.domain ?? "";
+        if (visibleDomains.has(domain)) {
+          visibleDomains.delete(domain);
+          btn.classList.replace("legend-toggle--on", "legend-toggle--off");
+        } else {
+          visibleDomains.add(domain);
+          btn.classList.replace("legend-toggle--off", "legend-toggle--on");
+        }
+        saveVisibleDomains(visibleDomains);
+        options.onVisibilityChange(new Set(visibleDomains));
+      });
+    });
   };
 
   const renderNode = (node: GraphNode): void => {
@@ -97,14 +177,13 @@ export function createOverlay(options: OverlayOptions) {
     `;
 
     options.inspector.querySelectorAll<HTMLButtonElement>("button[data-action]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         const actionId = button.dataset.action as ActionId;
         const nodeId = button.dataset.nodeId;
-        if (!nodeId) {
-          return;
-        }
+        if (!nodeId) return;
 
-        const updatedScene = options.actionService.execute(actionId, nodeId);
+        button.disabled = true;
+        const updatedScene = await options.actionService.execute(actionId, nodeId);
         listeners.forEach((listener) => listener(updatedScene));
       });
     });
@@ -147,84 +226,86 @@ export function createOverlay(options: OverlayOptions) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Field extraction — one branch per domain type
+// ---------------------------------------------------------------------------
+
 function nodeFields(node: GraphNode): Array<[string, string]> {
   const shared: Array<[string, string]> = [
     ["Status", node.status],
     ["Source", `${node.source.system}:${node.source.externalId}`],
   ];
 
-  if (node.domain === "task") {
+  if (node.domain === "todo") {
+    const todo = node as TodoNode;
     return [
-      ["Title", node.title],
-      ["Priority", node.priority],
-      ["Project", node.project ?? "None"],
-      ["Due", node.dueDate ?? "Unscheduled"],
-      ["Completed", node.completed ? "Yes" : "No"],
-      ...shared,
-    ];
-  }
-
-  if (node.domain === "agent-session") {
-    return [
-      ["Agent", node.agentName],
-      ["Runtime", node.runtime],
-      ["Model", node.model],
-      ["Session", node.sessionStatus],
-      ["Updated", formatDate(node.updatedAt)],
-      ["Artifacts", node.relatedArtifacts.map((artifact) => artifact.externalId).join(", ") || "None"],
-      ...shared,
-    ];
-  }
-
-  if (node.domain === "contact") {
-    return [
-      ["Name", node.name],
-      ["Organization", node.organization ?? "Unknown"],
-      ["Role", node.role ?? "Unknown"],
+      ["Title", todo.title],
+      ["Priority", todo.priority],
+      ["Due", todo.dueDate ? formatDate(todo.dueDate) : "Unscheduled"],
+      ["Todo status", todo.todoStatus],
+      ["Review", todo.reviewStatus || "—"],
+      ["Confidence", todo.confidence != null ? `${Math.round(todo.confidence * 100)}%` : "—"],
       ...shared,
     ];
   }
 
   if (node.domain === "email") {
+    const email = node as EmailNode;
     return [
-      ["Sender", node.sender],
-      ["Subject", node.subject],
-      ["Time", formatDate(node.timestamp)],
-      ["Unread", node.unread ? "Yes" : "No"],
-      ["Follow up", node.followUp ? "Yes" : "No"],
+      ["Sender", email.senderName ? `${email.senderName} <${email.sender}>` : email.sender],
+      ["Subject", email.subject],
+      ["Received", formatDate(email.timestamp)],
+      ["Unread", email.unread ? "Yes" : "No"],
+      ["Thread", email.threadId ?? "—"],
       ...shared,
     ];
   }
 
-  return [
-    ["Sender", node.sender],
-    ["Channel", node.channel],
-    ["Thread", node.thread ?? "None"],
-    ["Time", formatDate(node.timestamp)],
-    ["Follow up", node.followUp ? "Yes" : "No"],
-    ...shared,
-  ];
+  if (node.domain === "person") {
+    const person = node as PersonNode;
+    return [
+      ["Name", person.displayName],
+      ["Email", person.primaryEmail ?? "—"],
+      ["Org", person.organization ?? "—"],
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "organization") {
+    const org = node as OrganizationNode;
+    return [
+      ["Name", org.orgName],
+      ["Domain", org.domain_name ?? "—"],
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "action-proposal") {
+    const proposal = node as ActionProposalNode;
+    return [
+      ["Proposal", proposal.proposalTitle],
+      ["Risk", proposal.riskLevel ?? "—"],
+      ["Proposal status", proposal.proposalStatus],
+      ["Confidence", proposal.confidence != null ? `${Math.round(proposal.confidence * 100)}%` : "—"],
+      ...shared,
+    ];
+  }
+
+  return shared;
 }
 
 function summaryForNode(node: GraphNode): string {
-  if (node.domain === "agent-session") {
-    return node.taskSummary;
-  }
-
-  if (node.domain === "task") {
-    return node.title;
-  }
-
-  if (node.domain === "email") {
-    return node.subject;
-  }
-
-  if (node.domain === "message") {
-    return node.thread ?? node.channel;
-  }
-
-  return [node.role, node.organization].filter(Boolean).join(" at ") || node.name;
+  if (node.domain === "todo") return (node as TodoNode).title;
+  if (node.domain === "email") return (node as EmailNode).subject;
+  if (node.domain === "person") return (node as PersonNode).primaryEmail ?? (node as PersonNode).displayName;
+  if (node.domain === "organization") return (node as OrganizationNode).domain_name ?? (node as OrganizationNode).orgName;
+  if (node.domain === "action-proposal") return (node as ActionProposalNode).proposalTitle;
+  return (node as BaseNode).label;
 }
+
+// ---------------------------------------------------------------------------
+// Rendering helpers
+// ---------------------------------------------------------------------------
 
 function fields(items: Array<[string, string]>): string {
   return `<dl class="field-list">${items

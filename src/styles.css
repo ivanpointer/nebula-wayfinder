@@ -87,30 +87,86 @@ body {
   min-width: 82px;
 }
 
+.toolbar-slider-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.toolbar-slider-label span {
+  color: #9dafc1;
+  font-size: 11px;
+}
+
+.toolbar-slider {
+  width: 90px;
+  height: 4px;
+  cursor: pointer;
+  accent-color: #8fb3ff;
+}
+
 .legend {
   left: 20px;
   bottom: 20px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 1fr));
-  gap: 8px 14px;
-  max-width: min(420px, calc(100vw - 40px));
-  padding: 14px;
+  grid-template-columns: repeat(2, minmax(110px, 1fr));
+  gap: 6px;
+  max-width: min(380px, calc(100vw - 40px));
+  padding: 12px;
   border-radius: 8px;
 }
 
-.legend-item {
+.legend-header {
+  grid-column: 1 / -1;
+  color: #9dafc1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.legend-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: #d8e0ea;
+  gap: 7px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 6px;
   font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+  /* override the global button styles */
+  min-width: 0;
+}
+
+.legend-toggle--on {
+  border-color: color-mix(in srgb, var(--swatch) 40%, transparent);
+  background: color-mix(in srgb, var(--swatch) 14%, rgba(255,255,255,0.04));
+  color: #f5f7fb;
+}
+
+.legend-toggle--off {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: #6b7e92;
+  opacity: 0.6;
+}
+
+.legend-toggle--off .swatch {
+  opacity: 0.3;
 }
 
 .swatch {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  box-shadow: 0 0 12px currentColor;
+  background: var(--swatch);
+  box-shadow: 0 0 8px var(--swatch);
+  flex-shrink: 0;
 }
 
 .inspector {
@@ -232,6 +288,7 @@ button:hover {
   }
 
   .legend {
-    display: none;
+    grid-template-columns: repeat(3, 1fr);
+    bottom: 80px;
   }
 }

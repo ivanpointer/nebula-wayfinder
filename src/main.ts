@@ -58,5 +58,15 @@ app.start();
 
 // Apply persisted brightness and visibility after the pipeline is ready.
 app.setBrightness(loadBrightness());
-const allDomains = ["todo", "email", "person", "organization", "action-proposal"];
+// Must match the NodeDomain union in src/domain/types.ts. Keep this in sync
+// with DOMAIN_ENTRIES in src/ui/overlay.ts — both drive first-run visibility.
+const allDomains: string[] = [
+  "person", "organization",
+  "memory", "decision", "spec", "preference", "task", "retro",
+  "message", "document", "meeting",
+  "issue", "merge-request", "commit",
+  "project", "jira-project", "confluence-space",
+  "figma-team", "figma-project", "channel", "repo",
+  "unknown",
+];
 app.setVisibleDomains(loadVisibleDomains(allDomains));

@@ -8,22 +8,20 @@ vi.mock("../../src/services/neo4jClient", () => ({
 }));
 
 describe("action service", () => {
-  it("marks todo nodes as complete in memory", async () => {
+  it("exposes no actions for any node (neocortex has no write surface yet)", () => {
     const service = createActionService(mockGraphScene);
-    const updated = await service.execute("todo.markDone", "todo-follow-up");
-    const node = updated.graphs.flatMap((graph) => graph.nodes).find((n) => n.id === "todo-follow-up");
-
-    expect(node?.status).toBe("complete");
-    expect(node?.domain === "todo" && node.todoStatus).toBe("done");
+    for (const graph of mockGraphScene.graphs) {
+      for (const node of graph.nodes) {
+        expect(service.getActions(node)).toEqual([]);
+      }
+    }
   });
 
-  it("changes todo priority without mutating the original fixture", async () => {
+  it("getScene returns a defensive clone that does not alias the input", () => {
     const service = createActionService(mockGraphScene);
-    const updated = await service.execute("todo.priority.low", "todo-write-spec");
-    const node = updated.graphs.flatMap((graph) => graph.nodes).find((n) => n.id === "todo-write-spec");
-    const original = mockGraphScene.graphs.flatMap((graph) => graph.nodes).find((n) => n.id === "todo-write-spec");
-
-    expect(node?.domain === "todo" && node.priority).toBe("low");
-    expect(original?.domain === "todo" && original.priority).toBe("urgent");
+    const clone = service.getScene();
+    expect(clone).not.toBe(mockGraphScene);
+    expect(clone.graphs).not.toBe(mockGraphScene.graphs);
+    expect(clone.id).toBe(mockGraphScene.id);
   });
 });

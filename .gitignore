@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .devbox/
+.env
 .vite/
 coverage/
 test-results/

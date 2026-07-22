@@ -64,6 +64,12 @@ Neo4j relationships are physically directed, but the API can set `directed: fals
 
 Relationship properties should be preserved in `metadata` when they matter to inspection, provenance, confidence, timestamps, source-system ids, or future filtering.
 
+Jira issue hierarchy is represented as explicit relationships rather than LLM-inferred adjacency:
+
+- `PARENT_OF` / `CHILD_OF` connect parent tasks to subtasks.
+- `REPRESENTS_PROJECT`, `IN_EPIC`, `IN_JIRA_PROJECT`, and `HAS_JIRA_ISSUE` connect Jira epics/projects to the reusable `Project` concept.
+- `LINKED_TO` preserves Jira linked issues, with link direction/type retained in edge metadata.
+
 ## Actions API
 
 The UI should ask the backend which actions are available for a selected node. The backend decides based on domain, permissions, current state, and source integration state.

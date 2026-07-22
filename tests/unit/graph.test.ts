@@ -14,16 +14,11 @@ describe("graph layout", () => {
   });
 
   it("places directed targets after their sources", () => {
-    // people-cloud has a directed sent_by edge from email-research → person-alex.
-    // That edge is stored in people-cloud for rendering purposes, but the nodes
-    // live in different clouds so arrangeNodes gets the nodes from both clouds.
-    const emailCloud = graphById("email-cloud");
-    const peopleCloud = graphById("people-cloud");
-    const nodes = [...emailCloud.nodes, ...peopleCloud.nodes];
-    const edges = [...emailCloud.edges, ...peopleCloud.edges];
-    const positions = arrangeNodes(nodes, edges);
+    // memory-cloud has a directed linked_to edge decision-sample-1 → memory-sample-1.
+    const memoryCloud = graphById("memory-cloud");
+    const positions = arrangeNodes(memoryCloud.nodes, memoryCloud.edges);
 
-    edges
+    memoryCloud.edges
       .filter((edge) => edge.directed && positions.has(edge.source) && positions.has(edge.target))
       .forEach((edge) => {
         expect(positions.get(edge.target)?.x).toBeGreaterThan(positions.get(edge.source)?.x ?? Number.NEGATIVE_INFINITY);
@@ -31,15 +26,14 @@ describe("graph layout", () => {
   });
 
   it("isolates disconnected components into separate clouds", () => {
-    const graph = graphById("todo-cloud");
+    // memory-cloud has one edge (decision → memory) leaving retro isolated.
+    const graph = graphById("memory-cloud");
     const positions = arrangeNodes(graph.nodes, graph.edges);
-    const connected = positions.get("todo-follow-up");
-    const disconnected = positions.get("todo-write-spec");
+    const connected = positions.get("memory-sample-1");
+    const disconnected = positions.get("retro-sample-1");
 
     expect(connected).toBeDefined();
     expect(disconnected).toBeDefined();
-    // In a graph with a related_to edge between todo-inbox-zero and todo-follow-up,
-    // todo-write-spec is disconnected and should be placed in its own component.
     expect(Math.abs((connected?.x ?? 0) - (disconnected?.x ?? 0))).toBeGreaterThan(2);
   });
 });

@@ -5,11 +5,24 @@ import type {
   GraphSceneData,
   GraphNode,
   Selection,
-  TodoNode,
-  EmailNode,
   PersonNode,
   OrganizationNode,
-  ActionProposalNode,
+  MemoryLikeNode,
+  TaskNode,
+  MessageNode,
+  DocumentNode,
+  MeetingNode,
+  IssueNode,
+  MergeRequestNode,
+  CommitNode,
+  ProjectNode,
+  JiraProjectNode,
+  ConfluenceSpaceNode,
+  FigmaTeamNode,
+  FigmaProjectNode,
+  ChannelNode,
+  RepoNode,
+  UnknownNode,
 } from "../domain/types";
 
 const BRIGHTNESS_STORAGE_KEY = "nebula-wayfinder:brightness:v1";
@@ -120,11 +133,34 @@ export function createOverlay(options: OverlayOptions) {
     });
 
     const DOMAIN_ENTRIES: Array<[string, string, string]> = [
-      ["todo",            "#4fd1c5", "Todos"],
-      ["email",           "#8fb3ff", "Email"],
-      ["person",          "#f5c76b", "People"],
-      ["organization",    "#c77dff", "Orgs"],
-      ["action-proposal", "#ff7a59", "Proposals"],
+      // Memory kinds
+      ["memory",            "#f6a5c0", "Memory"],
+      ["decision",          "#e05780", "Decisions"],
+      ["spec",              "#b28dff", "Specs"],
+      ["preference",        "#ffb86b", "Preferences"],
+      ["task",              "#4fd1c5", "Tasks"],
+      ["retro",             "#ff7a59", "Retros"],
+      // Content
+      ["message",           "#8fb3ff", "Messages"],
+      ["document",          "#78d8b0", "Documents"],
+      ["meeting",           "#f7d060", "Meetings"],
+      // People
+      ["person",            "#f5c76b", "People"],
+      ["organization",      "#c77dff", "Orgs"],
+      // Work
+      ["issue",             "#58a6ff", "Issues"],
+      ["merge-request",     "#a371f7", "MRs"],
+      ["commit",            "#7c8db5", "Commits"],
+      // Containers
+      ["project",           "#7dd87d", "Projects"],
+      ["jira-project",      "#3388dd", "Jira projects"],
+      ["confluence-space",  "#4aa1c8", "Confluence"],
+      ["figma-team",        "#ff5e5b", "Figma teams"],
+      ["figma-project",     "#ff8fa3", "Figma projects"],
+      ["channel",           "#63c5da", "Channels"],
+      ["repo",              "#9ba6b2", "Repos"],
+      // Catch-all for labels the wayfinder hasn't been taught yet.
+      ["unknown",           "#a0a0a0", "Unknown"],
     ];
 
     const allDomains = DOMAIN_ENTRIES.map(([d]) => d);
@@ -236,37 +272,16 @@ function nodeFields(node: GraphNode): Array<[string, string]> {
     ["Source", `${node.source.system}:${node.source.externalId}`],
   ];
 
-  if (node.domain === "todo") {
-    const todo = node as TodoNode;
-    return [
-      ["Title", todo.title],
-      ["Priority", todo.priority],
-      ["Due", todo.dueDate ? formatDate(todo.dueDate) : "Unscheduled"],
-      ["Todo status", todo.todoStatus],
-      ["Review", todo.reviewStatus || "—"],
-      ["Confidence", todo.confidence != null ? `${Math.round(todo.confidence * 100)}%` : "—"],
-      ...shared,
-    ];
-  }
-
-  if (node.domain === "email") {
-    const email = node as EmailNode;
-    return [
-      ["Sender", email.senderName ? `${email.senderName} <${email.sender}>` : email.sender],
-      ["Subject", email.subject],
-      ["Received", formatDate(email.timestamp)],
-      ["Unread", email.unread ? "Yes" : "No"],
-      ["Thread", email.threadId ?? "—"],
-      ...shared,
-    ];
-  }
-
   if (node.domain === "person") {
     const person = node as PersonNode;
+    const handles = person.handles
+      ? Object.entries(person.handles).map(([k, v]) => `${k}=${v}`).join(", ")
+      : "—";
     return [
       ["Name", person.displayName],
       ["Email", person.primaryEmail ?? "—"],
-      ["Org", person.organization ?? "—"],
+      ["Kind", person.kind ?? "—"],
+      ["Handles", handles],
       ...shared,
     ];
   }
@@ -276,17 +291,189 @@ function nodeFields(node: GraphNode): Array<[string, string]> {
     return [
       ["Name", org.orgName],
       ["Domain", org.domain_name ?? "—"],
+      ["Kind", org.kind ?? "—"],
       ...shared,
     ];
   }
 
-  if (node.domain === "action-proposal") {
-    const proposal = node as ActionProposalNode;
+  if (
+    node.domain === "memory" || node.domain === "decision" ||
+    node.domain === "spec" || node.domain === "preference" ||
+    node.domain === "retro"
+  ) {
+    const m = node as MemoryLikeNode;
     return [
-      ["Proposal", proposal.proposalTitle],
-      ["Risk", proposal.riskLevel ?? "—"],
-      ["Proposal status", proposal.proposalStatus],
-      ["Confidence", proposal.confidence != null ? `${Math.round(proposal.confidence * 100)}%` : "—"],
+      ["Kind", m.kindLabel ?? node.domain],
+      ["Content", m.content],
+      ...(m.signalType ? [["Signal", m.signalType] as [string, string]] : []),
+      ...(m.reconciliationStatus ? [["Reconciliation", m.reconciliationStatus] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "task") {
+    const t = node as TaskNode;
+    return [
+      ["Title", t.title],
+      ["Priority", t.priority ?? "—"],
+      ["Task status", t.taskStatus ?? "—"],
+      ["Assignee", t.assignee ?? "—"],
+      ["Due", t.dueAt ? formatDate(t.dueAt) : "Unscheduled"],
+      ...(t.notBefore ? [["Not before", formatDate(t.notBefore)] as [string, string]] : []),
+      ["Confidence", t.confidence != null ? `${Math.round(t.confidence * 100)}%` : "—"],
+      ...(t.details ? [["Details", t.details] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "message") {
+    const m = node as MessageNode;
+    return [
+      ["Subject", m.subject ?? "—"],
+      ["From", m.fromEmail ?? "—"],
+      ["Timestamp", m.timestamp ? formatDate(m.timestamp) : "—"],
+      ["Channel", m.channelName ?? "—"],
+      ["Thread", m.threadId ?? "—"],
+      ...(m.labels?.length ? [["Labels", m.labels.join(", ")] as [string, string]] : []),
+      ...(m.content ? [["Content", m.content] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "document") {
+    const d = node as DocumentNode;
+    return [
+      ["Title", d.title],
+      ["Kind", d.kind ?? "—"],
+      ["Space", d.spaceKey ?? "—"],
+      ["Modified", d.lastModified ? formatDate(d.lastModified) : "—"],
+      ["URL", d.webUrl ?? "—"],
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "meeting") {
+    const m = node as MeetingNode;
+    return [
+      ["Topic", m.topic],
+      ["Start", m.startTime ? formatDate(m.startTime) : "—"],
+      ["Duration", m.durationSec != null ? `${Math.round(m.durationSec / 60)} min` : "—"],
+      ["URL", m.shareUrl ?? "—"],
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "issue") {
+    const i = node as IssueNode;
+    return [
+      ["Key", i.key],
+      ["Summary", i.summary],
+      ["Type", i.issueType ?? "—"],
+      ["Status", i.issueStatus ?? i.status],
+      ["Priority", i.priority ?? "—"],
+      ["Project", i.projectKey ?? "—"],
+      ["Updated", i.updatedAt ? formatDate(i.updatedAt) : "—"],
+      ["URL", i.webUrl ?? "—"],
+      ...(i.labels?.length ? [["Labels", i.labels.join(", ")] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "merge-request") {
+    const mr = node as MergeRequestNode;
+    return [
+      ["Key", mr.key],
+      ["Title", mr.title],
+      ["State", mr.state ?? "—"],
+      ["Source", mr.sourceBranch ?? "—"],
+      ["Target", mr.targetBranch ?? "—"],
+      ["Project", mr.projectPath ?? "—"],
+      ["URL", mr.webUrl ?? "—"],
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "commit") {
+    const c = node as CommitNode;
+    return [
+      ["SHA", c.shortSha],
+      ["Project", c.projectPath ?? "—"],
+      ["Timestamp", c.timestamp ? formatDate(c.timestamp) : "—"],
+      ["URL", c.webUrl ?? "—"],
+      ...(c.content ? [["Message", c.content] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "project") {
+    const p = node as ProjectNode;
+    return [["Name", p.projectName], ["Key", p.projectKey ?? "—"], ...shared];
+  }
+
+  if (node.domain === "jira-project") {
+    const p = node as JiraProjectNode;
+    return [
+      ["Name", p.projectName],
+      ["Key", p.jiraProjectKey ?? "—"],
+      ...(p.description ? [["Description", p.description] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "confluence-space") {
+    const s = node as ConfluenceSpaceNode;
+    return [
+      ["Name", s.spaceName],
+      ["Key", s.spaceKey ?? "—"],
+      ...(s.description ? [["Description", s.description] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "figma-team") {
+    const t = node as FigmaTeamNode;
+    return [["Name", t.teamName], ["Key", t.teamKey ?? "—"], ...shared];
+  }
+
+  if (node.domain === "figma-project") {
+    const p = node as FigmaProjectNode;
+    return [["Name", p.projectName], ["Key", p.projectKey ?? "—"], ...shared];
+  }
+
+  if (node.domain === "channel") {
+    const c = node as ChannelNode;
+    return [
+      ["Name", c.channelName],
+      ["Private", c.isPrivate ? "Yes" : "No"],
+      ["Type", c.channelType ?? "—"],
+      ...(c.topic ? [["Topic", c.topic] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "repo") {
+    const r = node as RepoNode;
+    return [
+      ["Name", r.repoName],
+      ["Default branch", r.defaultBranch ?? "—"],
+      ["URL", r.webUrl ?? "—"],
+      ...(r.description ? [["Description", r.description] as [string, string]] : []),
+      ...shared,
+    ];
+  }
+
+  if (node.domain === "unknown") {
+    const u = node as UnknownNode;
+    // Surface every property so a maintainer can see what a novel label
+    // looks like from the outside before writing a first-class mapper.
+    const propRows: Array<[string, string]> = Object.entries(u.rawProperties)
+      .filter(([, v]) => v != null && String(v).length > 0)
+      .slice(0, 12)
+      .map(([k, v]) => [k, String(v).slice(0, 200)]);
+    return [
+      ["Label", u.primaryLabel],
+      ["All labels", u.allLabels.join(", ")],
+      ...propRows,
       ...shared,
     ];
   }
@@ -295,12 +482,35 @@ function nodeFields(node: GraphNode): Array<[string, string]> {
 }
 
 function summaryForNode(node: GraphNode): string {
-  if (node.domain === "todo") return (node as TodoNode).title;
-  if (node.domain === "email") return (node as EmailNode).subject;
-  if (node.domain === "person") return (node as PersonNode).primaryEmail ?? (node as PersonNode).displayName;
-  if (node.domain === "organization") return (node as OrganizationNode).domain_name ?? (node as OrganizationNode).orgName;
-  if (node.domain === "action-proposal") return (node as ActionProposalNode).proposalTitle;
-  return (node as BaseNode).label;
+  switch (node.domain) {
+    case "person": return (node as PersonNode).primaryEmail ?? (node as PersonNode).displayName;
+    case "organization": return (node as OrganizationNode).domain_name ?? (node as OrganizationNode).orgName;
+    case "memory":
+    case "decision":
+    case "spec":
+    case "preference":
+    case "retro":
+      return (node as MemoryLikeNode).content;
+    case "task": return (node as TaskNode).title;
+    case "message": return (node as MessageNode).subject ?? (node as MessageNode).content ?? node.label;
+    case "document": return (node as DocumentNode).title;
+    case "meeting": return (node as MeetingNode).topic;
+    case "issue": return (node as IssueNode).summary;
+    case "merge-request": return (node as MergeRequestNode).title;
+    case "commit": return (node as CommitNode).content ?? (node as CommitNode).shortSha;
+    case "project": return (node as ProjectNode).projectName;
+    case "jira-project": return (node as JiraProjectNode).projectName;
+    case "confluence-space": return (node as ConfluenceSpaceNode).spaceName;
+    case "figma-team": return (node as FigmaTeamNode).teamName;
+    case "figma-project": return (node as FigmaProjectNode).projectName;
+    case "channel": return (node as ChannelNode).channelName;
+    case "repo": return (node as RepoNode).repoName;
+    case "unknown": {
+      const u = node as UnknownNode;
+      return u.displayValue ?? `${u.primaryLabel} node`;
+    }
+    default: return (node as BaseNode).label;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ import { makeEdgeCurve, pointBeforeTarget, toVector3 } from "../graph/edgeCurves
 import { arrangeNodes, layoutGraphClouds, type PositionedNode } from "../graph/layout";
 import type { GraphEdge, GraphNode, GraphSceneData, Selection, VectorTuple } from "../domain/types";
 import { clearFixedNodePositions, type NodePositionMap } from "../services/layoutPersistence";
-import { createEdgeArrowMaterial, createEdgeGlowMaterial, createEdgeMaterial, createNodeMaterial, domainPalette } from "./materials";
+import { createEdgeArrowMaterial, createEdgeGlowMaterial, createEdgeMaterial, createNodeMaterial, nodeColorForRender } from "./materials";
 import { NODE_FLOOR_CLEARANCE, REFLECTIVE_FLOOR_Y } from "./sceneBounds";
 
 interface RenderedNode {
@@ -407,7 +407,7 @@ export class GraphRenderer {
 
     const sphere = MeshBuilder.CreateSphere(
       `node-${node.id}`,
-      { diameter: node.domain === "action-proposal" ? 1.04 : 0.86, segments: 32 },
+      { diameter: node.domain === "retro" || node.domain === "decision" ? 1.04 : 0.86, segments: 32 },
       this.scene,
     );
     sphere.parent = visualRoot;
@@ -416,7 +416,7 @@ export class GraphRenderer {
 
     const core = MeshBuilder.CreateSphere(`node-core-${node.id}`, { diameter: 0.34, segments: 16 }, this.scene);
     core.parent = visualRoot;
-    core.material = createEdgeMaterial(this.scene, `core-${node.id}`, domainPalette[node.domain], true);
+    core.material = createEdgeMaterial(this.scene, `core-${node.id}`, nodeColorForRender(node), true);
     core.metadata = { nodeId: node.id };
     const fire = this.createNodeFire(node, sphere);
     const connectionRadius = this.measureConnectionRadius(root);
@@ -432,7 +432,7 @@ export class GraphRenderer {
       core,
       position: root.position.clone(),
       connectionRadius,
-      color: domainPalette[node.domain],
+      color: nodeColorForRender(node),
       idlePhase: seededPhase(node.id),
       selectionScale: 1,
       fire,
@@ -856,9 +856,9 @@ export class GraphRenderer {
       return undefined;
     }
 
-    const radius = node.domain === "action-proposal" ? 0.64 : 0.52;
+    const radius = node.domain === "retro" || node.domain === "decision" ? 0.64 : 0.52;
     const fire = new ParticleSystem(`node-fire-${node.id}`, Math.round(110 + intensity * 180), this.scene);
-    const color = domainPalette[node.domain];
+    const color = nodeColorForRender(node);
     fire.particleTexture = this.getFireTexture();
     fire.emitter = emitter;
     fire.blendMode = ParticleSystem.BLENDMODE_ADD;
@@ -956,7 +956,7 @@ export class GraphRenderer {
 
       const position = previous.positions.get(nodeId);
       if (position) {
-        this.createHaloAt(position, domainPalette[node.domain], 0.85);
+        this.createHaloAt(position, nodeColorForRender(node), 0.85);
       }
     });
 
@@ -983,6 +983,9 @@ const COLOR_TOKENS: Record<string, string> = {
   email: "#8fb3ff",
   person: "#f5c76b",
   organization: "#c77dff",
+  project: "#7dd87d",
+  jira: "#58a6ff",
+  "jira-issue": "#58a6ff",
   "action-proposal": "#ff7a59",
   urgent: "#ff4d6d",
 };
@@ -1040,12 +1043,34 @@ function idleAmplitude(node: GraphNode): number {
 }
 
 function idleSpeed(node: GraphNode): number {
+  // Domain-specific idle-orbit speed. Faster = feels more "alive" or urgent.
   const domainSpeed: Record<string, number> = {
-    todo: 1.35,
-    email: 1.52,
+    // people + orgs — slow, background
     person: 0.95,
     organization: 0.82,
-    "action-proposal": 1.9,
+    // memory-kind — mostly calm, retros perk up (they're "open" items)
+    memory: 0.9,
+    decision: 0.8,
+    spec: 0.75,
+    preference: 0.85,
+    retro: 1.9,
+    task: 1.35,
+    // content
+    message: 1.52,
+    document: 0.9,
+    meeting: 1.05,
+    // work items
+    issue: 1.12,
+    "merge-request": 1.25,
+    commit: 1.0,
+    // containers — very slow (they're scopes)
+    project: 0.88,
+    "jira-project": 0.7,
+    "confluence-space": 0.7,
+    "figma-team": 0.7,
+    "figma-project": 0.75,
+    channel: 0.8,
+    repo: 0.78,
   };
 
   const speed = domainSpeed[node.domain] ?? 1.2;
@@ -1104,9 +1129,10 @@ function nodeAnimationFingerprint(node: GraphNode): string {
   return JSON.stringify({
     status: node.status,
     priority: "priority" in node ? node.priority : undefined,
-    todoStatus: "todoStatus" in node ? node.todoStatus : undefined,
-    unread: "unread" in node ? node.unread : undefined,
-    proposalStatus: "proposalStatus" in node ? node.proposalStatus : undefined,
+    taskStatus: "taskStatus" in node ? node.taskStatus : undefined,
+    signalType: "signalType" in node ? node.signalType : undefined,
+    state: "state" in node ? node.state : undefined,
+    issueStatus: "issueStatus" in node ? node.issueStatus : undefined,
   });
 }
 
@@ -1115,21 +1141,24 @@ function fireIntensity(node: GraphNode): number {
     return 0;
   }
 
-  if (node.domain === "action-proposal") {
-    return node.proposalStatus === "draft" ? 0.54 : 0.36;
+  // Retros represent open agent-flagged signals — visible attention marker.
+  if (node.domain === "retro") {
+    return 0.54;
   }
 
-  if (node.domain === "todo") {
+  // Tasks burn hotter with priority + activity.
+  if (node.domain === "task") {
     const priorityIntensity: Record<string, number> = {
       urgent: 0.95,
       high: 0.62,
       medium: node.status === "active" ? 0.38 : 0.16,
       low: node.status === "active" ? 0.22 : 0.12,
     };
-    return priorityIntensity[node.priority] ?? 0.16;
+    return priorityIntensity[node.priority ?? ""] ?? 0.16;
   }
 
-  if (node.domain === "email" && node.unread) {
+  // Open MRs glow like fresh mail did.
+  if (node.domain === "merge-request" && node.status === "active") {
     return 0.56;
   }
 

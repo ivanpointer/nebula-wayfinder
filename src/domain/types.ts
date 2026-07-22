@@ -1,11 +1,38 @@
-// Node domains map 1-to-1 with the primary Neo4j label used in unibrain.
-// This list will grow as unibrain adds new vertex types.
+// Node domains map 1-to-1 with the primary Neo4j label used in neocortex
+// (the graph inside second-brain). New labels get added here as ingest
+// pipelines land new node types.
 export type NodeDomain =
-  | "todo"
-  | "email"
+  // People + orgs
   | "person"
   | "organization"
-  | "action-proposal";
+  // Memory kinds — the second-brain knowledge core
+  | "memory"
+  | "decision"
+  | "spec"
+  | "preference"
+  | "task"
+  | "retro"
+  // Content
+  | "message"
+  | "document"
+  | "meeting"
+  // Work items
+  | "issue"
+  | "merge-request"
+  | "commit"
+  // Containers / scopes
+  | "project"
+  | "jira-project"
+  | "confluence-space"
+  | "figma-team"
+  | "figma-project"
+  | "channel"
+  | "repo"
+  // Catch-all for labels the wayfinder hasn't been taught yet. Neocortex
+  // treats new labels as expected growth (docs/architecture/ontology.md +
+  // schema-agent proposals) — dynamic discovery keeps nodes visible until
+  // a first-class mapping lands.
+  | "unknown";
 
 export type GraphNodeStatus =
   | "active"
@@ -44,74 +71,245 @@ export interface BaseNode {
   fixedPosition?: VectorTuple;
 }
 
-// :Todo — extracted task items (from emails, etc.)
-export interface TodoNode extends BaseNode {
-  domain: "todo";
-  title: string;
-  details?: string;
-  dueDate?: string;
-  priority: Priority;
-  todoStatus: "open" | "in_progress" | "waiting" | "done" | "canceled";
-  reviewStatus: string;   // e.g. "draft"
-  evidence?: string;
-  confidence?: number;
-}
-
-// :EmailMessage :RawIntake — normalized inbound email
-export interface EmailNode extends BaseNode {
-  domain: "email";
-  sender: string;
-  senderName?: string;
-  subject: string;
-  timestamp: string;
-  unread: boolean;
-  threadId?: string;
-}
-
-// :Person — identity record inferred from email senders/recipients
+// :Person — identity records unified across sources.
 export interface PersonNode extends BaseNode {
   domain: "person";
   displayName: string;
   primaryEmail?: string;
-  organization?: string;
+  kind?: string;         // human | bot | service
+  isSelf?: boolean;
+  handles?: Record<string, string>;   // handle_slack, handle_gitlab, ...
 }
 
-// :Organization — inferred from non-public email domains
+// :Organization — inferred from email domains + explicit ingests.
 export interface OrganizationNode extends BaseNode {
   domain: "organization";
   orgName: string;
   domain_name?: string;   // the email domain, e.g. "acme.com"
+  kind?: string;          // company | personal | unknown
 }
 
-// :ActionProposal — AI-proposed action, draft review state
-export interface ActionProposalNode extends BaseNode {
-  domain: "action-proposal";
-  proposalTitle: string;
-  riskLevel?: string;
-  proposalStatus: string;
+// Common shape for the memory-kind nodes: Memory, Decision, Spec,
+// Preference, Retro. Content is free-form prose captured by an agent.
+export interface MemoryLikeNode extends BaseNode {
+  domain: "memory" | "decision" | "spec" | "preference" | "retro";
+  content: string;
+  kindLabel?: string;
+  signalType?: string;        // miss | noise | stale | duplicate | win (retros)
+  reconciliationStatus?: string;
+  activityStatus?: string;
+}
+
+// :Task — actionable to-do items captured by agents or extracted from sources.
+export interface TaskNode extends BaseNode {
+  domain: "task";
+  title: string;
+  details?: string;
+  priority?: Priority;
+  taskStatus?: string;    // open | closed | ...
+  assignee?: string;
+  origin?: string;
+  dueAt?: string;
+  notBefore?: string;
   confidence?: number;
+  activityStatus?: string;
+}
+
+// :Message — email, Slack messages, Jira comments, GitLab notes.
+export interface MessageNode extends BaseNode {
+  domain: "message";
+  subject?: string;
+  content?: string;
+  fromEmail?: string;
+  timestamp?: string;
+  threadId?: string;
+  channelName?: string;
+  labels?: string[];
+}
+
+// :Document — Confluence pages, Gmail blobs, Figma files, Zoom transcripts.
+export interface DocumentNode extends BaseNode {
+  domain: "document";
+  title: string;
+  webUrl?: string;
+  kind?: string;
+  spaceKey?: string;
+  lastModified?: string;
+}
+
+// :Meeting — Zoom meetings.
+export interface MeetingNode extends BaseNode {
+  domain: "meeting";
+  topic: string;
+  startTime?: string;
+  durationSec?: number;
+  shareUrl?: string;
+}
+
+// :Issue — Jira issues and GitLab issues.
+export interface IssueNode extends BaseNode {
+  domain: "issue";
+  key: string;
+  summary: string;
+  issueType?: string;
+  issueStatus?: string;
+  priority?: string;
+  labels?: string[];
+  projectKey?: string;
+  webUrl?: string;
+  updatedAt?: string;
+}
+
+// :MergeRequest — GitLab MRs.
+export interface MergeRequestNode extends BaseNode {
+  domain: "merge-request";
+  key: string;
+  title: string;
+  state?: string;
+  sourceBranch?: string;
+  targetBranch?: string;
+  projectPath?: string;
+  webUrl?: string;
+  labels?: string[];
+}
+
+// :Commit — GitLab commits.
+export interface CommitNode extends BaseNode {
+  domain: "commit";
+  shortSha: string;
+  content?: string;
+  projectPath?: string;
+  webUrl?: string;
+  timestamp?: string;
+}
+
+// :Project — user-curated work scopes ("Turbine GA Launch").
+export interface ProjectNode extends BaseNode {
+  domain: "project";
+  projectName: string;
+  projectKey?: string;
+}
+
+// :JiraProject — Jira ticket containers.
+export interface JiraProjectNode extends BaseNode {
+  domain: "jira-project";
+  projectName: string;
+  jiraProjectKey?: string;
+  description?: string;
+}
+
+// :ConfluenceSpace — Confluence doc containers.
+export interface ConfluenceSpaceNode extends BaseNode {
+  domain: "confluence-space";
+  spaceName: string;
+  spaceKey?: string;
+  description?: string;
+}
+
+// :FigmaTeam — Figma teams.
+export interface FigmaTeamNode extends BaseNode {
+  domain: "figma-team";
+  teamName: string;
+  teamKey?: string;
+}
+
+// :FigmaProject — Figma projects.
+export interface FigmaProjectNode extends BaseNode {
+  domain: "figma-project";
+  projectName: string;
+  projectKey?: string;
+}
+
+// :Channel — Slack channels.
+export interface ChannelNode extends BaseNode {
+  domain: "channel";
+  channelName: string;
+  isPrivate?: boolean;
+  topic?: string;
+  channelType?: string;
+}
+
+// :Repo — code repositories.
+export interface RepoNode extends BaseNode {
+  domain: "repo";
+  repoName: string;
+  description?: string;
+  defaultBranch?: string;
+  webUrl?: string;
+}
+
+// Catch-all for any label the wayfinder has no first-class mapper for.
+// `primaryLabel` carries the raw Neo4j label so the UI can distinguish
+// between different unknown types (e.g. two forthcoming labels render
+// with different hash-derived colors instead of collapsing to one).
+export interface UnknownNode extends BaseNode {
+  domain: "unknown";
+  primaryLabel: string;
+  allLabels: string[];
+  displayValue?: string;   // best-guess display string picked from props
+  rawProperties: Record<string, unknown>;
 }
 
 export type GraphNode =
-  | TodoNode
-  | EmailNode
   | PersonNode
   | OrganizationNode
-  | ActionProposalNode;
+  | MemoryLikeNode
+  | TaskNode
+  | MessageNode
+  | DocumentNode
+  | MeetingNode
+  | IssueNode
+  | MergeRequestNode
+  | CommitNode
+  | ProjectNode
+  | JiraProjectNode
+  | ConfluenceSpaceNode
+  | FigmaTeamNode
+  | FigmaProjectNode
+  | ChannelNode
+  | RepoNode
+  | UnknownNode;
 
-// Relationship kinds present in unibrain, plus generic fallbacks.
+// Relationship kinds present in neocortex, plus generic fallbacks.
 export type EdgeKind =
-  | "sent_by"
+  | "authored_by"
   | "sent_to"
   | "cc_to"
-  | "has_todo"
-  | "produced"
+  | "has_attachment"
+  | "in_channel"
+  | "in_repo"
+  | "in_jira_project"
+  | "in_confluence_space"
+  | "in_figma_project"
+  | "in_figma_team"
+  | "merges_into"
+  | "committed_to"
+  | "scoped_to"
+  | "assigned_to"
+  | "reported_by"
+  | "reviewed_by"
+  | "parent_of"
+  | "child_of"
+  | "last_edited_by"
   | "evidenced_by"
-  | "analyzed_by"
   | "derived_from"
-  | "has_email"
+  | "supersedes"
+  | "linked_to"
+  | "produced"
+  | "part_of"
+  | "resolves_to"
+  | "depends_on"
+  | "references"
+  | "mentions"
+  | "about"
+  | "relates_to"
+  | "worked_on"
   | "works_at"
-  | "related_to"
+  | "interacts_with"
+  | "participated_in"
+  | "co_retrieved_with"
+  | "led_to_capture"
+  | "has_email"
   | "referenced";
 
 export interface GraphEdge {
@@ -159,13 +357,10 @@ export type Selection =
   | { type: "nodes"; nodes: GraphNode[] }
   | null;
 
-export type ActionId =
-  | "todo.markDone"
-  | "todo.dismiss"
-  | "todo.priority.low"
-  | "todo.priority.medium"
-  | "todo.priority.high"
-  | "todo.priority.urgent";
+// Neocortex has no read-write mutation surface wired into this UI yet,
+// so no actions are exposed. Kept as an (empty) type for future
+// expansion — action wiring is retained but returns [] for all nodes.
+export type ActionId = never;
 
 export interface NodeAction {
   id: ActionId;
